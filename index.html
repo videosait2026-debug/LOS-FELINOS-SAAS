@@ -6,27 +6,37 @@
   <meta name="theme-color" content="#0B0B0C">
   <meta name="description" content="Corporación Deportiva Los Felinos · Amalfi, Antioquia.">
   <title>Los Felinos — Corporación Deportiva</title>
-  <!-- Íconos del club: suba el escudo en PNG al repositorio con estos tres nombres (mismo nivel que este index.html) -->
-  <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="icono-512.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Los Felinos">
+  <link rel="icon" type="image/png" id="ico-favicon">
+  <link rel="apple-touch-icon" sizes="180x180" id="ico-apple">
   <script>
-    // Manifest de "Añadir a pantalla de inicio" (embebido para no subir otro archivo): nombre e íconos del club
+    // Ícono de la pestaña y de "Añadir a pantalla de inicio" = el logo subido en Configuración › Club.
+    // La app lo envía al entrar; aquí queda guardado para mostrarlo de inmediato en la siguiente visita.
+    // El manifest va embebido (data: URL) para no subir otro archivo al repositorio.
     (function() {
-      try {
-        var base = location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, '');
-        var m = { name: 'Los Felinos — Corporación Deportiva', short_name: 'Los Felinos', start_url: base, scope: base, display: 'standalone',
-          background_color: '#0B0B0C', theme_color: '#0B0B0C',
-          icons: [{ src: base + 'icono-192.png', sizes: '192x192', type: 'image/png' }, { src: base + 'icono-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }] };
-        var l = document.createElement('link');
-        l.rel = 'manifest';
-        l.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(m));
-        document.head.appendChild(l);
-      } catch (e) { /* sin manifest: los íconos de arriba siguen funcionando */ }
+      var base = location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, '');
+      window.ponerIconoClub = function(ic) {
+        var fav = document.getElementById('ico-favicon'), apple = document.getElementById('ico-apple');
+        if (ic && ic.i64) fav.href = ic.i64; else fav.removeAttribute('href');
+        if (ic && ic.i180) apple.href = ic.i180; else apple.removeAttribute('href');
+        var nombre = (ic && ic.nombre) || 'Los Felinos';
+        var corto = nombre.replace(/^corporaci[oó]n\s+(deportiva\s+)?/i, '').substring(0, 20);
+        if (ic && ic.nombre) document.title = nombre;
+        document.querySelector('meta[name="apple-mobile-web-app-title"]').content = corto;
+        try {
+          var m = { name: nombre, short_name: corto, start_url: base, scope: base, display: 'standalone', background_color: '#0B0B0C', theme_color: '#0B0B0C',
+            icons: ic && ic.i180 ? [{ src: ic.i180, sizes: '180x180', type: 'image/png' }, { src: ic.i512 || ic.i180, sizes: '512x512', type: 'image/png' }] : [] };
+          var l = document.querySelector('link[rel="manifest"]');
+          if (!l) { l = document.createElement('link'); l.rel = 'manifest'; document.head.appendChild(l); }
+          l.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(m));
+        } catch (e) { /* sin manifest: el favicon sigue funcionando */ }
+      };
+      var guardado = null;
+      try { guardado = JSON.parse(localStorage.getItem('felinos-icono') || 'null'); } catch (e) { guardado = null; }
+      window.ponerIconoClub(guardado);
     })();
   </script>
   <style>
@@ -176,10 +186,39 @@
         var d = e.data;
         if (!d || typeof d !== 'object' || d.origen !== 'felinos' || !origenValido(e.origin)) return;
         appVentana = e.source; appOrigen = e.origin;
-        if (d.tipo === 'hola') aApp({ tipo: 'mascara-lista', camara: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) });
+        if (d.tipo === 'hola') aApp({ tipo: 'mascara-lista', camara: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+          url: location.protocol === 'https:' ? location.origin + location.pathname.replace(/index\.html$/i, '') : '' });
+        else if (d.tipo === 'icono') recibirIcono(d);
         else if (d.tipo === 'abrir-escaner') abrir(d);
         else if (d.tipo === 'resultado') mostrarResultado(d);
       });
+
+      /* --- Favicon: el logo que la app tiene en Configuración › Club, en 64, 180 y 512 px --- */
+      function recibirIcono(d) {
+        var data = String(d.data_url || '');
+        if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(data) || data.length > 4000000) return;
+        var img = new Image();
+        img.onload = function() {
+          var escala = function(lado, fondo) {
+            var c = document.createElement('canvas');
+            c.width = c.height = lado;
+            var x = c.getContext('2d');
+            if (fondo) { x.fillStyle = fondo; x.fillRect(0, 0, lado, lado); }
+            var margen = fondo ? lado * 0.08 : 0, util = lado - margen * 2;
+            var r = Math.min(util / img.width, util / img.height);
+            var w = img.width * r, h = img.height * r;
+            x.drawImage(img, (lado - w) / 2, (lado - h) / 2, w, h);
+            return c.toDataURL('image/png');
+          };
+          try {
+            // iPhone pinta de negro lo transparente: el ícono de pantalla de inicio lleva fondo blanco y margen
+            var ic = { clave: String(d.clave || ''), nombre: String(d.nombre || '').substring(0, 60), i64: escala(64), i180: escala(180, '#FFFFFF'), i512: escala(512, '#FFFFFF') };
+            window.ponerIconoClub(ic);
+            try { localStorage.setItem('felinos-icono', JSON.stringify(ic)); } catch (e) { /* sin espacio: se pide en cada visita */ }
+          } catch (e) { /* imagen no dibujable */ }
+        };
+        img.src = data;
+      }
 
       /* --- Sonidos: check (dos tonos que suben), error (tono grave doble), ya registrado (suave) --- */
       function prepararAudio() {
